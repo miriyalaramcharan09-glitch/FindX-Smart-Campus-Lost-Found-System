@@ -8,9 +8,9 @@ export function routeApi(req, res, pathname) {
 }
 
 export function routeItem(req, res, suffix = '') {
-  const match = req.url?.match(/\/api\/items\/(\d+)/);
+  const match = req.url?.match(/\/api\/items\/([A-Za-z0-9_-]+)/);
   const id = typeof req.query?.id === 'string' ? req.query.id : match?.[1];
-  if (!id || !/^\d+$/.test(id)) {
+  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
     res.statusCode = 400;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ error: 'Invalid item id' }));

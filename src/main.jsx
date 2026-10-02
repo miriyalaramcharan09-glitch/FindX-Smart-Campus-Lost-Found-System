@@ -4,6 +4,29 @@ import './style.css';
 
 const categories = ['Electronics', 'Accessories', 'Bags', 'Books', 'Clothing', 'Keys', 'Other'];
 const icons = { Electronics: '⌁', Accessories: '◈', Bags: '▱', Books: '▤', Clothing: '◇', Keys: '⚿', Other: '✳' };
+const localItemsKey = 'findx.items.v1';
+const localResponsesKey = 'findx.responses.v1';
+
+function readStoredRecords(key, label) {
+  const stored = window.localStorage.getItem(key);
+  if (!stored) return [];
+  try {
+    const records = JSON.parse(stored);
+    if (!Array.isArray(records)) throw new Error();
+    return records;
+  } catch {
+    throw new Error(`Saved ${label} could not be read. Clear this site's storage and try again.`);
+  }
+}
+
+function saveStoredRecord(key, label, record) {
+  const records = readStoredRecords(key, label).filter((entry) => String(entry.id) !== String(record.id));
+  window.localStorage.setItem(key, JSON.stringify([record, ...records]));
+}
+
+function visualVariant(id) {
+  return [...String(id)].reduce((total, char) => total + char.charCodeAt(0), 0) % 6;
+}
 
 async function readApiJson(response, fallback) {
   const isJson = response.headers.get('content-type')?.includes('application/json');
@@ -42,7 +65,16 @@ function App() {
     if (type !== 'all') params.set('type', type);
     if (category !== 'all') params.set('category', category);
     const response = await fetch(`/api/items?${params}`);
-    setItems(await readApiJson(response, 'Could not load items. Please try again.'));
+    const apiItems = await readApiJson(response, 'Could not load items. Please try again.');
+    const mergedItems = new Map(apiItems.map((item) => [String(item.id), item]));
+    for (const item of readStoredRecords(localItemsKey, 'items')) mergedItems.set(String(item.id), item);
+    const search = query.trim().toLowerCase();
+    setItems([...mergedItems.values()]
+      .filter((item) => (!type || type === 'all' || item.type === type)
+        && (!category || category === 'all' || item.category === category)
+        && (!search || [item.title, item.description, item.location, item.category]
+          .some((value) => String(value).toLowerCase().includes(search))))
+      .sort((a, b) => new Date(b.createdAt || b.created_at).getTime() - new Date(a.createdAt || a.created_at).getTime()));
   }
   useEffect(() => { loadItems().catch((e) => setError(e.message)); }, [query, type, category]);
 
@@ -62,6 +94,7 @@ function App() {
           }),
         });
         const result = await readApiJson(response, 'Could not submit your response. Please try again.');
+        saveStoredRecord(localResponsesKey, 'responses', result.response);
         setNotice(result.message || 'Response sent successfully.');
         setModal({ mode: 'detail', item: modal.item });
         return;
@@ -71,6 +104,7 @@ function App() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       const result = await readApiJson(response, 'Could not submit your report. Please try again.');
+      saveStoredRecord(localItemsKey, 'items', result);
       setItems((current) => [result, ...current]);
       setModal({ mode: 'detail', item: result });
       setNotice('Your report is live. Thanks for helping our campus!');
@@ -81,6 +115,12 @@ function App() {
 
   async function openDetail(item) {
     try {
+      const savedItem = readStoredRecords(localItemsKey, 'items')
+        .find((entry) => String(entry.id) === String(item.id));
+      if (savedItem) {
+        setModal({ mode: 'detail', item: savedItem });
+        return;
+      }
       const response = await fetch(`/api/items/${item.id}`);
       const result = await readApiJson(response, 'Could not load item details. Please try again.');
       setModal({ mode: 'detail', item: result });
@@ -113,8 +153,8 @@ function App() {
     </main>
     <footer><a className="brand" href="#"><span className="brand-mark">F</span> FindX<span className="brand-dot">.</span></a><span>Made for the things that matter. <i>♡</i></span><span>Campus Lost &amp; Found · {new Date().getFullYear()}</span></footer>
     {modal && <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setModal(null)}><section className="dialog"><button className="close" onClick={() => setModal(null)} aria-label="Close">×</button>
-      {modal.mode === 'detail' ? <><div className={`detail-visual visual-${modal.item.id % 6}`}>{modal.item.image ? <img src={modal.item.image} alt={modal.item.title} /> : <span>{icons[modal.item.category] || '✳'}</span>}</div><span className={`badge ${modal.item.type}`}>{modal.item.type}</span><h2>{modal.item.title}</h2><p className="detail-desc">{modal.item.description}</p><div className="detail-facts"><span>⌖ &nbsp;{modal.item.location}</span><span>◷ &nbsp;{modal.item.date}</span><span>◈ &nbsp;{modal.item.category}</span></div><button className="button button-dark full" onClick={() => setModal({ mode: 'claim', item: modal.item })}>This is mine / Get in touch ↗</button></> :
-      <><div className="eyebrow">{modal.mode === 'claim' ? 'REACH OUT' : 'CAMPUS COMMUNITY'}</div><h2>{modal.mode === 'claim' ? 'Is this your something?' : `I ${modal.type === 'lost' ? 'lost' : 'found'} something.`}</h2><p className="form-intro">{modal.mode === 'claim' ? `Send a message about ${modal.item.title}. The campus team will help connect you.` : 'A few details help get it to the right person.'}</p><form onSubmit={submit}>
+      {modal.mode === 'detail' ? <><div className={`detail-visual visual-${visualVariant(modal.item.id)}`}>{modal.item.image ? <img src={modal.item.image} alt={modal.item.title} /> : <span>{icons[modal.item.category] || '✳'}</span>}</div><span className={`badge ${modal.item.type}`}>{modal.item.type}</span><h2>{modal.item.title}</h2><p className="detail-desc">{modal.item.description}</p><div className="detail-facts"><span>⌖ &nbsp;{modal.item.location}</span><span>◷ &nbsp;{modal.item.date}</span><span>◈ &nbsp;{modal.item.category}</span></div>{notice && <div className="notice success">{notice}</div>}<button className="button button-dark full" onClick={() => setModal({ mode: 'claim', item: modal.item })}>{modal.item.type === 'lost' ? 'Is this your item?' : 'Claim this item'}</button></> :
+      <><div className="eyebrow">{modal.mode === 'claim' ? 'REACH OUT' : 'CAMPUS COMMUNITY'}</div><h2>{modal.mode === 'claim' ? (modal.item.type === 'lost' ? 'Is this your item?' : 'Claim this item') : `I ${modal.type === 'lost' ? 'lost' : 'found'} something.`}</h2><p className="form-intro">{modal.mode === 'claim' ? `Send a message about ${modal.item.title}. The campus team will help connect you.` : 'A few details help get it to the right person.'}</p><form onSubmit={submit}>
         {modal.mode === 'report' && <input type="hidden" name="type" value={modal.type} />}
         <label>Your name<input name="name" required maxLength="80" placeholder="What should we call you?" /></label>
         {modal.mode === 'report' && <label>Item name<input name="title" required maxLength="100" placeholder="e.g. Blue water bottle" /></label>}
@@ -123,7 +163,7 @@ function App() {
         {modal.mode === 'report' && <label>Photo URL <span className="optional">(optional)</span><input name="image" type="url" placeholder="https://..." /></label>}
         <label>Your contact<input name="contact" required maxLength="120" placeholder="Email or phone number" /></label>
         {modal.mode === 'report' ? <label>A few details<textarea name="description" required maxLength="1000" rows="3" placeholder="Color, brand, anything that might help..." /></label> : <label>Your message<textarea name="message" required maxLength="1000" rows="3" placeholder="Share a detail to help identify it..." /></label>}
-        <button className="button button-dark full" type="submit" disabled={busy}>{busy ? 'Sending…' : modal.mode === 'claim' ? 'Send request ↗' : 'Post to the board ↗'}</button>
+        <button className="button button-dark full" type="submit" disabled={busy}>{busy ? 'Sending…' : modal.mode === 'claim' ? 'Send Response' : 'Post to the board ↗'}</button>
       </form></>}
     </section></div>}
   </div>;

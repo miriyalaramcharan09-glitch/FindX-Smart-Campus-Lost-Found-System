@@ -25,13 +25,14 @@ npm start
 
 ## Data and API
 
-The API starts with sample listings and accepts lost/found reports and contact requests. For a zero-configuration Vercel demo, data is held in serverless instance memory: new reports may appear while that function instance is warm, but are not durable and can disappear on a cold start or redeploy. SQLite is used nowhere in the deployed API because Vercel's local filesystem is not persistent.
+The API starts with sample listings and accepts lost/found reports and contact requests. Vercel function memory is not shared or durable, so the frontend also saves reports and responses in the browser's local storage. This keeps a report visible, openable, and claimable in the browser that created it, including after reload. Browser-local reports are not shared with other devices or users; shared production persistence requires a hosted data store. SQLite is not used by the deployed API because Vercel's local filesystem is not persistent.
 
 - `GET /api/health`
 - `GET /api/items` (optional `q`, `type`, and `category` filters)
 - `GET /api/items/search?q=...`
 - `GET /api/items/:id`
 - `POST /api/items`
+- `POST /api/responses`
 - `POST /api/items/:id/claims`
 
-Item images are optional URLs. Claim/contact requests use the same best-effort in-memory storage as reports.
+New item and response IDs are unique UUIDs. Item images are optional URLs. API responses are JSON; the browser retains its own submitted reports and responses.

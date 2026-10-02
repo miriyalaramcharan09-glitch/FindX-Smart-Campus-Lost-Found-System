@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 const demoItems = [
   {
     id: 1, type: 'lost', title: 'Silver AirPods case', category: 'Electronics',
@@ -39,8 +41,6 @@ const demoItems = [
 
 const items = [...demoItems.map((item) => ({ ...item, createdAt: item.created_at || item.createdAt || new Date().toISOString(), created_at: item.created_at || item.createdAt || new Date().toISOString() }))];
 const responses = [];
-let nextId = Math.max(...items.map((item) => item.id)) + 1;
-let nextResponseId = 1;
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -80,24 +80,24 @@ export async function handleApi(req, res) {
       return send(res, 200, filtered);
     }
 
-    const itemPath = pathname.match(/^\/api\/items\/(\d+)$/);
+    const itemPath = pathname.match(/^\/api\/items\/([A-Za-z0-9_-]+)$/);
     if (itemPath && method === 'GET') {
-      const item = items.find((entry) => Number(entry.id) === Number(itemPath[1]));
+      const item = items.find((entry) => String(entry.id) === itemPath[1]);
       if (!item) return send(res, 404, { error: 'Item not found' });
       return send(res, 200, item);
     }
 
-    const claimPath = pathname.match(/^\/api\/items\/(\d+)\/claims$/);
+    const claimPath = pathname.match(/^\/api\/items\/([A-Za-z0-9_-]+)\/claims$/);
     if (claimPath && method === 'POST') {
-      const item = items.find((entry) => Number(entry.id) === Number(claimPath[1]) && entry.status === 'active');
+      const item = items.find((entry) => String(entry.id) === claimPath[1] && entry.status === 'active');
       if (!item) return send(res, 404, { error: 'Item not found' });
       const body = await readBody(req);
       if (!body || ![body.name, body.contact, body.message].every((value) => typeof value === 'string' && value.trim())) {
         return send(res, 400, { error: 'Name, contact, and message are required.' });
       }
       const response = {
-        id: nextResponseId++,
-        itemId: Number(item.id),
+        id: randomUUID(),
+        itemId: String(item.id),
         name: body.name.trim(),
         contact: body.contact.trim(),
         message: body.message.trim(),
@@ -109,17 +109,16 @@ export async function handleApi(req, res) {
 
     if (pathname === '/api/responses' && method === 'POST') {
       const body = await readBody(req);
-      if (!body || ![body.itemId, body.name, body.contact, body.message].every((value) => typeof value === 'string' || typeof value === 'number')) {
+      if (!body || !['string', 'number'].includes(typeof body.itemId) || !String(body.itemId).trim()
+        || ![body.name, body.contact, body.message].every((value) => typeof value === 'string' && value.trim())) {
         return send(res, 400, { error: 'Item id, name, contact, and message are required.' });
       }
-      const item = items.find((entry) => Number(entry.id) === Number(body.itemId));
-      if (!item) return send(res, 404, { error: 'Item not found' });
       const response = {
-        id: nextResponseId++,
-        itemId: Number(item.id),
-        name: String(body.name).trim(),
-        contact: String(body.contact).trim(),
-        message: String(body.message).trim(),
+        id: randomUUID(),
+        itemId: String(body.itemId),
+        name: body.name.trim(),
+        contact: body.contact.trim(),
+        message: body.message.trim(),
         createdAt: new Date().toISOString(),
       };
       responses.push(response);
@@ -133,7 +132,7 @@ export async function handleApi(req, res) {
         return send(res, 400, { error: 'Complete all required fields with valid values.' });
       }
       const item = {
-        id: nextId++,
+        id: randomUUID(),
         type,
         title: title.trim(),
         category: category.trim(),
@@ -144,8 +143,8 @@ export async function handleApi(req, res) {
         contact: contact.trim(),
         status: 'active',
         createdAt: new Date().toISOString(),
-        created_at: new Date().toISOString(),
       };
+      item.created_at = item.createdAt;
       items.push(item);
       return send(res, 201, item);
     }
