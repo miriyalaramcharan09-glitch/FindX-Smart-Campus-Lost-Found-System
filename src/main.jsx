@@ -5,6 +5,27 @@ import './style.css';
 const categories = ['Electronics', 'Accessories', 'Bags', 'Books', 'Clothing', 'Keys', 'Other'];
 const icons = { Electronics: '⌁', Accessories: '◈', Bags: '▱', Books: '▤', Clothing: '◇', Keys: '⚿', Other: '✳' };
 
+async function readApiJson(response, fallback) {
+  const isJson = response.headers.get('content-type')?.includes('application/json');
+  if (!response.ok) {
+    if (isJson) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || `${fallback} (HTTP ${response.status})`);
+    }
+    await response.text();
+    throw new Error(`${fallback} (HTTP ${response.status}; API returned a non-JSON response)`);
+  }
+  if (!isJson) {
+    await response.text();
+    throw new Error(`${fallback} (API returned a non-JSON response)`);
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(`${fallback} (API returned invalid JSON)`);
+  }
+}
+
 function App() {
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState('');
@@ -21,8 +42,7 @@ function App() {
     if (type !== 'all') params.set('type', type);
     if (category !== 'all') params.set('category', category);
     const response = await fetch(`/api/items?${params}`);
-    if (!response.ok) throw new Error('Could not load items. Is the backend running?');
-    setItems(await response.json());
+    setItems(await readApiJson(response, 'Could not load items. Please try again.'));
   }
   useEffect(() => { loadItems().catch((e) => setError(e.message)); }, [query, type, category]);
 
@@ -35,8 +55,7 @@ function App() {
       const response = await fetch(modal.mode === 'claim' ? `/api/items/${modal.item.id}/claims` : '/api/items', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Something went wrong.');
+      await readApiJson(response, 'Could not submit your request. Please try again.');
       setModal(null);
       setNotice(modal.mode === 'claim' ? 'Request saved for the campus team.' : 'Your report is live. Thanks for helping our campus!');
       await loadItems();
@@ -48,8 +67,7 @@ function App() {
   async function openDetail(item) {
     try {
       const response = await fetch(`/api/items/${item.id}`);
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not load item details.');
+      const result = await readApiJson(response, 'Could not load item details. Please try again.');
       setModal({ mode: 'detail', item: result });
     } catch (e) { setError(e.message); }
   }
