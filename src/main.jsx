@@ -52,13 +52,28 @@ function App() {
     const form = new FormData(event.currentTarget);
     const payload = Object.fromEntries(form.entries());
     try {
-      const response = await fetch(modal.mode === 'claim' ? `/api/items/${modal.item.id}/claims` : '/api/items', {
+      if (modal.mode === 'claim') {
+        const response = await fetch('/api/responses', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            itemId: modal.item.id,
+            name: payload.name,
+            contact: payload.contact,
+            message: payload.message,
+          }),
+        });
+        const result = await readApiJson(response, 'Could not submit your response. Please try again.');
+        setNotice(result.message || 'Response sent successfully.');
+        setModal({ mode: 'detail', item: modal.item });
+        return;
+      }
+
+      const response = await fetch('/api/items', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-      await readApiJson(response, 'Could not submit your request. Please try again.');
-      setModal(null);
-      setNotice(modal.mode === 'claim' ? 'Request saved for the campus team.' : 'Your report is live. Thanks for helping our campus!');
-      await loadItems();
+      const result = await readApiJson(response, 'Could not submit your report. Please try again.');
+      setItems((current) => [result, ...current]);
+      setModal({ mode: 'detail', item: result });
+      setNotice('Your report is live. Thanks for helping our campus!');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }

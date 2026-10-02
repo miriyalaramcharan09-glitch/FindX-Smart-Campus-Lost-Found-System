@@ -37,9 +37,10 @@ const demoItems = [
   },
 ];
 
-const items = [...demoItems];
-const claims = [];
+const items = [...demoItems.map((item) => ({ ...item, createdAt: item.created_at || item.createdAt || new Date().toISOString(), created_at: item.created_at || item.createdAt || new Date().toISOString() }))];
+const responses = [];
 let nextId = Math.max(...items.map((item) => item.id)) + 1;
+let nextResponseId = 1;
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -71,29 +72,58 @@ export async function handleApi(req, res) {
       const q = (url.searchParams.get('q') || '').trim().toLowerCase();
       const type = url.searchParams.get('type');
       const category = url.searchParams.get('category');
-      return send(res, 200, items.filter((item) => item.status === 'active'
+      const filtered = items.filter((item) => item.status === 'active'
         && (!type || type === 'all' || item.type === type)
         && (!category || category === 'all' || item.category === category)
-        && (!q || [item.title, item.description, item.location, item.category].some((value) => value.toLowerCase().includes(q))))
-        .slice().sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id));
+        && (!q || [item.title, item.description, item.location, item.category].some((value) => String(value).toLowerCase().includes(q))))
+        .slice().sort((a, b) => new Date(b.createdAt || b.created_at).getTime() - new Date(a.createdAt || a.created_at).getTime());
+      return send(res, 200, filtered);
     }
 
     const itemPath = pathname.match(/^\/api\/items\/(\d+)$/);
     if (itemPath && method === 'GET') {
-      const item = items.find((entry) => entry.id === Number(itemPath[1]));
-      return item ? send(res, 200, item) : send(res, 404, { error: 'Item not found' });
+      const item = items.find((entry) => Number(entry.id) === Number(itemPath[1]));
+      if (!item) return send(res, 404, { error: 'Item not found' });
+      return send(res, 200, item);
     }
 
     const claimPath = pathname.match(/^\/api\/items\/(\d+)\/claims$/);
     if (claimPath && method === 'POST') {
-      const item = items.find((entry) => entry.id === Number(claimPath[1]) && entry.status === 'active');
+      const item = items.find((entry) => Number(entry.id) === Number(claimPath[1]) && entry.status === 'active');
       if (!item) return send(res, 404, { error: 'Item not found' });
       const body = await readBody(req);
       if (!body || ![body.name, body.contact, body.message].every((value) => typeof value === 'string' && value.trim())) {
         return send(res, 400, { error: 'Name, contact, and message are required.' });
       }
-      claims.push({ item_id: item.id, name: body.name.trim(), contact: body.contact.trim(), message: body.message.trim() });
-      return send(res, 201, { message: 'Your request has been saved for the campus team.' });
+      const response = {
+        id: nextResponseId++,
+        itemId: Number(item.id),
+        name: body.name.trim(),
+        contact: body.contact.trim(),
+        message: body.message.trim(),
+        createdAt: new Date().toISOString(),
+      };
+      responses.push(response);
+      return send(res, 201, { id: response.id, itemId: response.itemId, message: 'Response sent successfully.' });
+    }
+
+    if (pathname === '/api/responses' && method === 'POST') {
+      const body = await readBody(req);
+      if (!body || ![body.itemId, body.name, body.contact, body.message].every((value) => typeof value === 'string' || typeof value === 'number')) {
+        return send(res, 400, { error: 'Item id, name, contact, and message are required.' });
+      }
+      const item = items.find((entry) => Number(entry.id) === Number(body.itemId));
+      if (!item) return send(res, 404, { error: 'Item not found' });
+      const response = {
+        id: nextResponseId++,
+        itemId: Number(item.id),
+        name: String(body.name).trim(),
+        contact: String(body.contact).trim(),
+        message: String(body.message).trim(),
+        createdAt: new Date().toISOString(),
+      };
+      responses.push(response);
+      return send(res, 201, { success: true, message: 'Response sent successfully.', response });
     }
 
     if (pathname === '/api/items' && method === 'POST') {
@@ -103,10 +133,18 @@ export async function handleApi(req, res) {
         return send(res, 400, { error: 'Complete all required fields with valid values.' });
       }
       const item = {
-        id: nextId++, type, title: title.trim(), category: category.trim(),
-        description: description.trim(), location: location.trim(), date,
-        image: image.trim(), contact: contact.trim(), status: 'active',
-        created_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        id: nextId++,
+        type,
+        title: title.trim(),
+        category: category.trim(),
+        description: description.trim(),
+        location: location.trim(),
+        date,
+        image: String(image).trim(),
+        contact: contact.trim(),
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
       items.push(item);
       return send(res, 201, item);
