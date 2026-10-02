@@ -45,7 +45,14 @@ function App() {
     finally { setBusy(false); }
   }
 
-  function openDetail(item) { setModal({ mode: 'detail', item }); }
+  async function openDetail(item) {
+    try {
+      const response = await fetch(`/api/items/${item.id}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not load item details.');
+      setModal({ mode: 'detail', item: result });
+    } catch (e) { setError(e.message); }
+  }
 
   return <div className="app">
     <header className="nav">
